@@ -1,7 +1,7 @@
 import { UrlFetchParams, UrlFetchResponse } from '@fastgpt/global/common/file/api';
 import * as cheerio from 'cheerio';
 import axios from 'axios';
-import { htmlToMarkdown } from './markdown';
+import { htmlToMarkdown } from './utils';
 
 export const cheerioToHtml = ({
   fetchUrl,
@@ -14,11 +14,13 @@ export const cheerioToHtml = ({
 }) => {
   // get origin url
   const originUrl = new URL(fetchUrl).origin;
+  const protocol = new URL(fetchUrl).protocol; // http: or https:
 
-  const selectDom = $(selector || 'body');
+  const usedSelector = selector || 'body';
+  const selectDom = $(usedSelector);
 
   // remove i element
-  selectDom.find('i,script').remove();
+  selectDom.find('i,script,style').remove();
 
   // remove empty a element
   selectDom
@@ -31,14 +33,22 @@ export const cheerioToHtml = ({
   // if link,img startWith /, add origin url
   selectDom.find('a').each((i, el) => {
     const href = $(el).attr('href');
-    if (href && href.startsWith('/')) {
-      $(el).attr('href', originUrl + href);
+    if (href) {
+      if (href.startsWith('//')) {
+        $(el).attr('href', protocol + href);
+      } else if (href.startsWith('/')) {
+        $(el).attr('href', originUrl + href);
+      }
     }
   });
   selectDom.find('img').each((i, el) => {
     const src = $(el).attr('src');
-    if (src && src.startsWith('/')) {
-      $(el).attr('src', originUrl + src);
+    if (src) {
+      if (src.startsWith('//')) {
+        $(el).attr('src', protocol + src);
+      } else if (src.startsWith('/')) {
+        $(el).attr('src', originUrl + src);
+      }
     }
   });
 
@@ -49,7 +59,13 @@ export const cheerioToHtml = ({
     .get()
     .join('\n');
 
-  return html;
+  const title = $('head title').text() || $('h1:first').text() || fetchUrl;
+
+  return {
+    html,
+    title,
+    usedSelector
+  };
 };
 export const urlsFetch = async ({
   urlList,
@@ -57,39 +73,42 @@ export const urlsFetch = async ({
 }: UrlFetchParams): Promise<UrlFetchResponse> => {
   urlList = urlList.filter((url) => /^(http|https):\/\/[^ "]+$/.test(url));
 
-  const response = (
-    await Promise.all(
-      urlList.map(async (url) => {
-        try {
-          const fetchRes = await axios.get(url, {
-            timeout: 30000
-          });
+  const response = await Promise.all(
+    urlList.map(async (url) => {
+      try {
+        const fetchRes = await axios.get(url, {
+          timeout: 30000
+        });
 
-          const $ = cheerio.load(fetchRes.data);
+        const $ = cheerio.load(fetchRes.data);
+        const { title, html, usedSelector } = cheerioToHtml({
+          fetchUrl: url,
+          $,
+          selector
+        });
 
-          const md = await htmlToMarkdown(
-            cheerioToHtml({
-              fetchUrl: url,
-              $,
-              selector
-            })
-          );
+        const md = await htmlToMarkdown(html);
 
-          return {
-            url,
-            content: md
-          };
-        } catch (error) {
-          console.log(error, 'fetch error');
+        return {
+          url,
+          title,
+          content: md,
+          selector: usedSelector
+        };
+      } catch (error) {
+        console.log(error, 'fetch error');
 
-          return {
-            url,
-            content: ''
-          };
-        }
-      })
-    )
-  ).filter((item) => item.content);
+        return {
+          url,
+          title: '',
+          content: '',
+          selector: ''
+        };
+      }
+    })
+  );
 
   return response;
 };
+
+export const loadContentByCheerio = async (content: string) => cheerio.load(content);

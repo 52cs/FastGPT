@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, memo, useCallback, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Box } from '@chakra-ui/react';
-// @ts-ignore
 import mermaid from 'mermaid';
-import MyIcon from '../../Icon';
+import MyIcon from '@fastgpt/web/components/common/Icon';
 
 const mermaidAPI = mermaid.mermaidAPI;
 mermaidAPI.initialize({
